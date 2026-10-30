@@ -1,31 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ==============================================================================
-# ChIP-seq Pipeline with Spike-in Normalization (S. pombe + S. cerevisiae)
-# ==============================================================================
 
-# --- Configuration & Reference Paths ---
 THREADS=8
 PREFIX="sample1" # Base name for output
 R1_RAW="raw_reads/${PREFIX}_R1.fastq.gz"
 R2_RAW="raw_reads/${PREFIX}_R2.fastq.gz"
 
-# Reference FASTA / BWA index prefixes
+
 REF_POMBE="refs/pombe/ASM294v3.fa"
 REF_CEREVISIAE="refs/cerevisiae/R64.fa"
 BLACKLIST_POMBE="refs/pombe/pombase_blacklist.bed"
 
-# Input control BAM (Needed for MACS2 peak calling & rER calculation)
+
 INPUT_BAM="bams/input_markdup.bam"
 INPUT_SPIKE_SCALED_BW="tracks/input_spike_norm.bw"
 
-# Output directories
 mkdir -p qc trimmed alignments bams tracks peaks metagene
 
-# ==============================================================================
-# 1. Quality Control & Adapter Trimming
-# ==============================================================================
+
 echo "==> Running QC and Trimming..."
 fastqc -t ${THREADS} -o qc/ ${R1_RAW} ${R2_RAW}
 multiqc qc/ -o qc/multiqc_pretrim
@@ -35,41 +28,31 @@ trim_galore --paired --phred20 -o trimmed/ ${R1_RAW} ${R2_RAW}
 R1_TRIM="trimmed/${PREFIX}_R1_val_1.fq.gz"
 R2_TRIM="trimmed/${PREFIX}_R2_val_2.fq.gz"
 
-# ==============================================================================
-# 2. Alignment & SAMtools Duplicate Marking (Target: S. pombe)
-# ==============================================================================
+
 echo "==> Aligning to S. pombe reference..."
 bwa mem -t ${THREADS} ${REF_POMBE} ${R1_TRIM} ${R2_TRIM} | \
   samtools view -@ ${THREADS} -u - | \
   samtools sort -@ ${THREADS} -n -o alignments/${PREFIX}_pombe_namesort.bam -
 
-# Fixmate, coordinate sort, and mark duplicates
 samtools fixmate -@ ${THREADS} -m alignments/${PREFIX}_pombe_namesort.bam alignments/${PREFIX}_pombe_fixmate.bam
 samtools sort -@ ${THREADS} -o alignments/${PREFIX}_pombe_coordsort.bam alignments/${PREFIX}_pombe_fixmate.bam
 samtools markdup -@ ${THREADS} alignments/${PREFIX}_pombe_coordsort.bam bams/${PREFIX}_pombe_markdup.bam
 samtools index bams/${PREFIX}_pombe_markdup.bam
 
-# Clean up intermediate alignment files
 rm alignments/${PREFIX}_pombe_namesort.bam alignments/${PREFIX}_pombe_fixmate.bam alignments/${PREFIX}_pombe_coordsort.bam
 
-# ==============================================================================
-# 3. Spike-in Alignment & Scale Factor Calculation (Target: S. cerevisiae)
-# ==============================================================================
+
 echo "==> Aligning to S. cerevisiae spike-in reference..."
 bwa mem -t ${THREADS} ${REF_CEREVISIAE} ${R1_TRIM} ${R2_TRIM} | \
   samtools view -@ ${THREADS} -b -o alignments/${PREFIX}_cerevisiae.bam -
 
-# Count uniquely mapped spike-in reads (-F 4 filters unmapped)
 SPIKE_READS=$(samtools view -c -F 4 alignments/${PREFIX}_cerevisiae.bam)
 echo "Spike-in mapped reads: ${SPIKE_READS}"
 
-# Compute scaling factor: 1e6 / spike-in reads
 SCALE_FACTOR=$(awk -v reads="${SPIKE_READS}" 'BEGIN { printf "%.8f", 1000000 / reads }')
 echo "Spike-in Scale Factor: ${SCALE_FACTOR}"
 
-# ==============================================================================
-# 4. Coverage Track Generation
-# ==============================================================================
+
 echo "==> Generating Spike-in normalized coverage track (deepTools)..."
 bamCoverage \
   -b bams/${PREFIX}_pombe_markdup.bam \
@@ -82,18 +65,15 @@ echo "==> Generating RPM-normalized coverage track (BEDTools + UCSC)..."
 PROPER_READS=$(samtools view -c -F 260 bams/${PREFIX}_pombe_markdup.bam)
 RPM_SCALE=$(awk -v reads="${PROPER_READS}" 'BEGIN { printf "%.8f", 1000000 / reads }')
 
-# Extract chromosome sizes
+
 samtools idxstats bams/${PREFIX}_pombe_markdup.bam | cut -f1,2 > refs/pombe/chrom.sizes
 
 bedtools genomecov -ibam bams/${PREFIX}_pombe_markdup.bam -bg -scale ${RPM_SCALE} > tracks/${PREFIX}_rpm.bedgraph
 bedGraphToBigWig tracks/${PREFIX}_rpm.bedgraph refs/pombe/chrom.sizes tracks/${PREFIX}_rpm.bw
 rm tracks/${PREFIX}_rpm.bedgraph
 
-# ==============================================================================
-# 5. Peak Calling (MACS2) & Blacklist Filtering
-# ==============================================================================
 echo "==> Calling peaks with MACS2..."
-# S. pombe effective genome size: ~1.25e7
+
 macs2 callpeak \
   -t bams/${PREFIX}_pombe_markdup.bam \
   -c ${INPUT_BAM} \
@@ -103,14 +83,9 @@ macs2 callpeak \
   -n ${PREFIX} \
   --outdir peaks/
 
-# Filter against PomBase blacklist and keep peaks with Fold Enrichment > 2
-# MACS2 narrowPeak: Column 7 is fold_enrichment
 bedtools intersect -v -a peaks/${PREFIX}_peaks.narrowPeak -b ${BLACKLIST_POMBE} | \
   awk '$7 > 2' > peaks/${PREFIX}_filtered_enrichment_gt2.bed
 
-# ==============================================================================
-# 6. Relative Enrichment Ratio (rER) & Background Subtraction
-# ==============================================================================
 echo "==> Computing Relative Enrichment Ratio (ChIP / Input)..."
 bigwigCompare \
   -b1 tracks/${PREFIX}_spike_norm.bw \
@@ -130,9 +105,6 @@ bigwigCompare \
 #   --binSize 10 \
 #   -p ${THREADS}
 
-# ==============================================================================
-# 7. Metagene Matrix & Profile (deepTools)
-# ==============================================================================
 echo "==> Generating metagene matrices and profiles..."
 GENES_BED="refs/pombe/pombe_genes.bed" # BED file containing annotations (or ranked subsets)
 
