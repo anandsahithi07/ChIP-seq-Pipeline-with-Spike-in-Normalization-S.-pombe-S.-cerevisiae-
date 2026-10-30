@@ -106,7 +106,7 @@ bigwigCompare \
 #   -p ${THREADS}
 
 echo "==> Generating metagene matrices and profiles..."
-GENES_BED="refs/pombe/pombe_genes.bed" # BED file containing annotations (or ranked subsets)
+GENES_BED="refs/pombe/pombe_genes.bed" 
 
 computeMatrix scale-regions \
   -S tracks/${PREFIX}_spike_norm.bw \
