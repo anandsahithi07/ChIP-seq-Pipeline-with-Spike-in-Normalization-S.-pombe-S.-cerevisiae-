@@ -3,7 +3,7 @@ set -euo pipefail
 
 
 THREADS=8
-PREFIX="sample1" # Base name for output
+PREFIX="sample1" 
 R1_RAW="raw_reads/${PREFIX}_R1.fastq.gz"
 R2_RAW="raw_reads/${PREFIX}_R2.fastq.gz"
 
