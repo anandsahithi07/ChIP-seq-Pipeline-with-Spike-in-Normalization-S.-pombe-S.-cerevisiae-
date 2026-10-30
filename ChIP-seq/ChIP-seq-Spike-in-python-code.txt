@@ -96,14 +96,14 @@ bigwigCompare \
   --smoothLength 100 \
   -p ${THREADS}
 
-# Optional: Background subtraction (e.g., subtracting NLS-GFP control track)
-# bigwigCompare \
-#   -b1 tracks/${PREFIX}_spike_norm.bw \
-#   -b2 tracks/NLS_GFP_spike_norm.bw \
-#   -o tracks/${PREFIX}_subtracted.bw \
-#   --operation subtract \
-#   --binSize 10 \
-#   -p ${THREADS}
+ Optional: Background subtraction (e.g., subtracting NLS-GFP control track)
+ bigwigCompare \
+  -b1 tracks/${PREFIX}_spike_norm.bw \
+  -b2 tracks/NLS_GFP_spike_norm.bw \
+  -o tracks/${PREFIX}_subtracted.bw \
+  --operation subtract \
+  --binSize 10 \
+  -p ${THREADS}
 
 echo "==> Generating metagene matrices and profiles..."
 GENES_BED="refs/pombe/pombe_genes.bed" 
